@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>JARVIS PUBG Tactical 3D</title>
+<style>body{margin:0;background:#0e1720;color:#e9f5ff;font:14px system-ui}header{padding:14px 20px;background:#182839;display:flex;justify-content:space-between}main{display:grid;grid-template-columns:240px 1fr 230px;height:calc(100vh - 56px)}aside{padding:16px;background:#182839;overflow:auto}button,select{width:100%;margin:6px 0;padding:11px;border-radius:8px;border:1px solid #486078;background:#293e53;color:white;cursor:pointer}button:hover{background:#365c78}#board{position:relative;min-height:400px}canvas{width:100%;height:100%;display:block}#note{position:absolute;top:12px;left:12px;right:12px;background:#213e4ddd;padding:9px;border-radius:6px;font-size:12px}#status{line-height:1.9}small{color:#a9c1d1}@media(max-width:850px){main{grid-template-columns:1fr;height:auto}#board{height:65vh;order:-1}}</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/"}}</script></head>
+<body><header><b>◈ JARVIS PUBG TACTICAL 3D</b><small>V0.1 · DEMONSTRAÇÃO</small></header><main>
+<aside><b>MAPA</b><select id="map"></select><p>MARCAR NO TERRENO</p><button data-tool="self">🔵 Minha posição</button><button data-tool="enemy">🔴 Inimigo</button><button data-tool="destination">🟢 Destino</button><button data-tool="inspect">👁 Apenas câmera</button><hr><button id="save">Salvar cenário</button><button id="load">Carregar cenário</button><button id="clear">Limpar peças</button><button id="reset">Restaurar câmera</button></aside>
+<section id="board"><canvas id="view"></canvas><div id="note">Terreno procedural demonstrativo. Não corresponde ao relevo real do PUBG. Não use para avaliar cobertura ou rotas.</div></section>
+<aside><b>VISÃO TÁTICA</b><p id="status"></p><hr><b>VISÃO DO INIMIGO</b><select id="enemySelect"></select><button id="pov">Ver da posição do inimigo</button><button id="overview">Voltar ao tabuleiro</button><p><small>Perspectiva virtual aproximada, não a visão real do adversário.</small></p><hr><small>Girar: arrastar · Zoom: roda · Mover: botão direito</small><p id="error" style="color:#ff9898"></p></aside>
+</main><script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+try {
+const maps=['Erangel','Miramar','Taego','Vikendi','Deston','Rondo','Sanhok','Karakin','Paramo'];
+const $=id=>document.getElementById(id), sel=$('map');maps.forEach(m=>sel.add(new Option(m,m)));
+const canvas=$('view'),scene=new THREE.Scene();scene.background=new THREE.Color(0x142b37);
+const camera=new THREE.PerspectiveCamera(55,1,.1,800);camera.position.set(85,95,100);
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+scene.add(new THREE.HemisphereLight(0xffffff,0x4a5345,2.5));const sun=new THREE.DirectionalLight(0xffeac8,2);sun.position.set(-50,110,40);scene.add(sun);
+const controls=new OrbitControls(camera,canvas);controls.enableDamping=true;controls.maxPolarAngle=Math.PI*.49;controls.minDistance=8;controls.maxDistance=280;
+let terrain,markers=[],tool='self',pov=false;
+const ray=new THREE.Raycaster(),mouse=new THREE.Vector2();
+const h=(x,z)=>{const s=maps.indexOf(sel.value)*1.47;return Math.sin(x*.045+s)*Math.cos(z*.052-s)*9+Math.sin(x*.095+s*.4)*Math.sin(z*.07+s)*4+Math.exp(-((x-25)**2+(z+10)**2)/1300)*24-7};
+function update(){const me=markers.find(m=>m.type==='self'),enemies=markers.filter(m=>m.type==='enemy');$('status').textContent='Você: '+(me?'marcado':'não marcado')+' | Inimigos: '+enemies.length+' | Destino: '+(markers.some(m=>m.type==='destination')?'marcado':'não marcado');const old=$('enemySelect').value;$('enemySelect').replaceChildren(new Option('Selecione o inimigo',''));enemies.forEach((m,i)=>$('enemySelect').add(new Option('Inimigo '+(i+1),m.id)));$('enemySelect').value=old||enemies[0]?.id||'';}
+function clear(){markers.forEach(m=>scene.remove(m.group));markers=[];update();}
+function makeTerrain(){if(terrain){scene.remove(terrain);terrain.geometry.dispose();terrain.material.dispose()}const g=new THREE.PlaneGeometry(200,200,140,140);g.rotateX(-Math.PI/2);const p=g.attributes.position;const colors=[];const low=new THREE.Color(sel.value==='Miramar'?0x96734b:0x376b53),high=new THREE.Color(sel.value==='Vikendi'?0xe2e6e6:0xa5a084);for(let i=0;i<p.count;i++){const y=h(p.getX(i),p.getZ(i));p.setY(i,y);const c=low.clone().lerp(high,THREE.MathUtils.clamp((y+15)/50,0,1));colors.push(c.r,c.g,c.b)}g.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));g.computeVertexNormals();terrain=new THREE.Mesh(g,new THREE.MeshStandardMaterial({vertexColors:true,side:THREE.DoubleSide}));scene.add(terrain);clear();}
+function add(type,x,z,id){const color={self:0x339cff,enemy:0xff5151,destination:0x31df83}[type],group=new THREE.Group();group.position.set(x,h(x,z),z);const stem=new THREE.Mesh(new THREE.CylinderGeometry(.4,.4,5,8),new THREE.MeshStandardMaterial({color}));stem.position.y=2.5;group.add(stem);const ball=new THREE.Mesh(new THREE.SphereGeometry(1.7,14,12),new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:.25}));ball.position.y=5.5;group.add(ball);scene.add(group);markers.push({type,x,z,id:id||String(Date.now()+Math.random()),group});update();}
+document.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>{tool=b.dataset.tool;document.querySelectorAll('[data-tool]').forEach(c=>c.style.borderColor=c===b?'#52c5f5':'#486078')});
+canvas.addEventListener('click',e=>{if(tool==='inspect'||pov)return;const r=canvas.getBoundingClientRect();mouse.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);ray.setFromCamera(mouse,camera);const hit=ray.intersectObject(terrain)[0];if(!hit)return;if(tool!=='enemy'){const prev=markers.find(m=>m.type===tool);if(prev){scene.remove(prev.group);markers=markers.filter(m=>m!==prev)}}add(tool,hit.point.x,hit.point.z)});
+sel.onchange=makeTerrain;$('clear').onclick=clear;
+$('save').onclick=()=>{localStorage.setItem('jarvis-pubg',JSON.stringify({map:sel.value,markers:markers.map(({type,x,z,id})=>({type,x,z,id}))}));alert('Cenário salvo.')};
+$('load').onclick=()=>{const s=localStorage.getItem('jarvis-pubg');if(!s)return alert('Nenhum cenário salvo.');try{const d=JSON.parse(s);sel.value=d.map;makeTerrain();d.markers.forEach(m=>add(m.type,m.x,m.z,m.id))}catch(e){alert('Erro ao carregar cenário.')}};
+function overview(){pov=false;controls.enabled=true;camera.position.set(85,95,100);controls.target.set(0,0,0);controls.update()}
+$('overview').onclick=overview;$('reset').onclick=overview;
+$('pov').onclick=()=>{const enemy=markers.find(m=>m.id===$('enemySelect').value),me=markers.find(m=>m.type==='self');if(!enemy||!me)return alert('Marque você e um inimigo.');pov=true;controls.enabled=false;camera.position.set(enemy.x,enemy.group.position.y+3,enemy.z);camera.lookAt(me.x,me.group.position.y+3,me.z)};
+function resize(){const r=canvas.getBoundingClientRect();if(!r.width||!r.height)return;renderer.setSize(r.width,r.height,false);camera.aspect=r.width/r.height;camera.updateProjectionMatrix()}
+new ResizeObserver(resize).observe($('board'));makeTerrain();resize();function animate(){requestAnimationFrame(animate);if(!pov)controls.update();renderer.render(scene,camera)}animate();
+}catch(e){$('error').textContent='Falha no 3D: '+e.message;console.error(e)}
+</script></body></html>
